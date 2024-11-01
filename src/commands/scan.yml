@@ -122,7 +122,7 @@ steps:
         - install:
             version: << parameters.version >>
             cache: << parameters.cache >>
-  
+
   # Get current date and output to a file for checksum use
   - run:
       name: Get Current Date
@@ -148,7 +148,7 @@ steps:
           local var_name="$1"
           local input_value="$2"
           local default_value="$3"
-        
+
           if [ ! -z "$input_value" ] && [ "$input_value" != "$default_value" ]; then
             echo "export $var_name=$input_value" >> $BASH_ENV
           fi

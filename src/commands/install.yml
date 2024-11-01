@@ -24,7 +24,7 @@ steps:
 
   # Step to check for cache condition
   - when:
-      condition: 
+      condition:
         and:
           - equal: [ true, << parameters.cache >> ]
           - equal: [ latest, << parameters.version >> ]
