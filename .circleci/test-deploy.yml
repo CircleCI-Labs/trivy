@@ -29,7 +29,11 @@ jobs:
       - checkout
       # Run your orb's commands to validate them.
       - trivy/install
-      - trivy/scan
+      - trivy/scan:
+          scan-type: fs
+          ignore-unfixed: true
+          format: sarif
+          output: report.sarif
 workflows:
   test-deploy:
     jobs:
