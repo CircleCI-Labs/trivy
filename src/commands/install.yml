@@ -1,0 +1,82 @@
+description: "Install Trivy security scanner"
+
+parameters:
+  version:
+    type: string
+    default: "v0.56.2"
+    description: "Trivy version to use"
+  cache:
+    type: boolean
+    default: true
+    description: "Enable or disable caching"
+  path:
+    type: string
+    default: "~/.local/bin"
+    description: "Path of where Trivy is install"
+
+steps:
+  # Define the binary path
+  - run:
+      name: Set Binary Path
+      command: |
+        echo "export TRIVY_BIN_DIR=<< parameters.path>>/trivy-bin" >> $BASH_ENV
+        source $BASH_ENV
+
+  # Step to check for cache condition
+  - when:
+      condition: 
+        and:
+          - equal: [ true, << parameters.cache >> ]
+          - equal: [ latest, << parameters.version >> ]
+      steps:
+        - run:
+            name: Check caching for the latest version
+            command: |
+              echo "'install-trivy' doesn't currently support caching the 'latest' version"
+              echo "Refer to https://github.com/aquasecurity/setup-trivy?tab=readme-ov-file#caching for more details."
+
+  # Restore Trivy binary from cache if not the 'latest' version
+  - when:
+      condition:
+        and:
+          - equal: [ true, << parameters.cache >> ]
+          - not:
+              equal: [ latest, << parameters.version >> ]
+      steps:
+        - restore_cache:
+            name: Restore Trivy Binary from Cache
+            keys:
+              - trivy-binary-<< parameters.version >>-{{ arch }}
+
+  # Download and install Trivy if cache is not hit
+  - run:
+      name: Install Trivy
+      command: |
+        if [ ! -f "${TRIVY_BIN_DIR}/trivy" ]; then
+          echo "Installing Trivy version << parameters.version >>"
+          mkdir -p ${TRIVY_BIN_DIR}
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b ${TRIVY_BIN_DIR} << parameters.version >>
+        else
+          echo "Trivy found in cache."
+        fi
+
+  # Save Trivy binary to cache for future runs
+  - when:
+      condition:
+        and:
+          - equal: [ true, << parameters.cache >> ]
+          - not:
+              equal: [ latest, << parameters.version >> ]
+      steps:
+        - save_cache:
+            name: Save Trivy Binary to Cache
+            key: trivy-binary-<< parameters.version >>-{{ arch }}
+            paths:
+              - << parameters.path >>/trivy-bin
+
+  # Add Trivy binary to PATH
+  - run:
+      name: Add Trivy Binary to PATH
+      command: |
+        echo "export PATH=\$PATH:${TRIVY_BIN_DIR}" >> $BASH_ENV
+        source $BASH_ENV

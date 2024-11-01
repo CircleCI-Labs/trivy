@@ -1,0 +1,200 @@
+description: "Run Trivy vulnerability scan"
+parameters:
+  scan-type:
+    type: string
+    default: "image"
+    description: "Scan type to use for scanning vulnerability"
+  image-ref:
+    type: string
+    default: ""
+    description: "Image reference (for backward compatibility)"
+  input:
+    type: string
+    default: ""
+    description: "Reference of tar file to scan"
+  scan-ref:
+    type: string
+    default: "."
+    description: "Scan reference"
+  exit-code:
+    type: string
+    default: ""
+    description: "Exit code when vulnerabilities were found"
+  ignore-unfixed:
+    type: boolean
+    default: false
+    description: "Ignore unfixed vulnerabilities"
+  pkg-type:
+    type: string
+    default: "os,library"
+    description: "Comma-separated list of package types (os, library)"
+  severity:
+    type: string
+    default: "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL"
+    description: "Severities of vulnerabilities to be displayed"
+  format:
+    type: string
+    default: "table"
+    description: "Output format (table, json, template)"
+  template:
+    type: string
+    default: ""
+    description: "Use an existing template for rendering output (@/contrib/gitlab.tpl, @/contrib/junit.tpl, @/contrib/html.tpl)"
+  output:
+    type: string
+    default: ""
+    description: "Writes results to a file with the specified file name"
+  skip-dirs:
+    type: string
+    default: ""
+    description: "Comma-separated list of directories where traversal is skipped"
+  skip-files:
+    type: string
+    default: ""
+    description: "Comma-separated list of files to be skipped"
+  cache-dir:
+    type: string
+    default: "~/.cache/trivy"
+    description: "Specify where the cache is stored"
+  timeout:
+    type: string
+    default: ""
+    description: "Timeout (default 5m0s)"
+  ignore-policy:
+    type: string
+    default: ""
+    description: "Filter vulnerabilities with OPA rego language"
+  hide-progress:
+    type: boolean
+    default: false
+    description: "Suppress progress bar and log output"
+  list-all-pkgs:
+    type: boolean
+    default: false
+    description: "Output all packages regardless of vulnerability"
+  scanners:
+    type: string
+    default: ""
+    description: "Comma-separated list of what security issues to detect"
+  trivy-ignores:
+    type: string
+    default: ""
+    description: "Comma-separated list of relative paths in the repository to one or more .trivyignore files"
+  github-pat:
+    type: string
+    default: ""
+    description: "GitHub Personal Access Token (PAT) for submitting SBOM to GitHub Dependency Snapshot API"
+  trivy-config:
+    type: string
+    default: ""
+    description: "Path to trivy.yaml config"
+  tf-vars:
+    type: string
+    default: ""
+    description: "Path to terraform tfvars file"
+  limit-severities-for-sarif:
+    type: string
+    default: ""
+    description: "Limit severities for SARIF format"
+  docker-host:
+    type: string
+    default: ""
+    description: "Unix domain socket path to use for Docker scanning, e.g., unix:///var/run/docker.sock"
+  version:
+    type: string
+    default: "v0.56.2"
+    description: "Trivy version to use"
+  cache:
+    type: boolean
+    default: true
+    description: "Specify whether caching is needed. Set to false to disable caching."
+  skip-setup-trivy:
+    type: boolean
+    default: false
+    description: "Skip calling the setup-trivy action to install Trivy"
+steps:
+  # Optionally install Trivy
+  - when:
+      condition:
+        not:
+          equal: [ true, << parameters.skip-setup-trivy >> ]
+      steps:
+        - install:
+            version: << parameters.version >>
+            cache: << parameters.cache >>
+  
+  # Get current date and output to a file for checksum use
+  - run:
+      name: Get Current Date
+      command: |
+        date +'%Y-%m-%d' > current_date.txt
+
+  # Restore DB from cache using checksum of date file
+  - when:
+      condition:
+        equal: [ true, << parameters.cache >> ]
+      steps:
+        - restore_cache:
+            name: Restore Trivy DB from Cache
+            keys:
+              - cache-trivy-{{ checksum "current_date.txt" }}
+              - cache-trivy-
+
+  # Set environment variables for Trivy
+  - run:
+      name: Set Trivy Environment Variables
+      command: |
+        set_env_var_if_provided() {
+          local var_name="$1"
+          local input_value="$2"
+          local default_value="$3"
+        
+          if [ ! -z "$input_value" ] && [ "$input_value" != "$default_value" ]; then
+            echo "export $var_name=$input_value" >> $BASH_ENV
+          fi
+        }
+
+        set_env_var_if_provided "TRIVY_INPUT" << parameters.input >> ""
+        set_env_var_if_provided "TRIVY_EXIT_CODE" << parameters.exit-code >> ""
+        set_env_var_if_provided "TRIVY_IGNORE_UNFIXED" << parameters.ignore-unfixed >> "false"
+        set_env_var_if_provided "TRIVY_PKG_TYPES" << parameters.pkg-type >> "os,library"
+        set_env_var_if_provided "TRIVY_SEVERITY" << parameters.severity >> "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL"
+        set_env_var_if_provided "TRIVY_FORMAT" << parameters.format >> "table"
+        set_env_var_if_provided "TRIVY_TEMPLATE" << parameters.template >> ""
+        set_env_var_if_provided "TRIVY_OUTPUT" << parameters.output >> ""
+        set_env_var_if_provided "TRIVY_SKIP_DIRS" << parameters.skip-dirs >> ""
+        set_env_var_if_provided "TRIVY_SKIP_FILES" << parameters.skip-files >> ""
+        set_env_var_if_provided "TRIVY_TIMEOUT" << parameters.timeout >> ""
+        set_env_var_if_provided "TRIVY_IGNORE_POLICY" << parameters.ignore-policy >> ""
+        set_env_var_if_provided "TRIVY_QUIET" << parameters.hide-progress >> ""
+        set_env_var_if_provided "TRIVY_LIST_ALL_PKGS" << parameters.list-all-pkgs >> "false"
+        set_env_var_if_provided "TRIVY_SCANNERS" << parameters.scanners >> ""
+        set_env_var_if_provided "TRIVY_CONFIG" << parameters.trivy-config >> ""
+        set_env_var_if_provided "TRIVY_TF_VARS" << parameters.tf-vars >> ""
+        set_env_var_if_provided "TRIVY_DOCKER_HOST" << parameters.docker-host >> ""
+
+        echo "export INPUT_SCAN_TYPE=<< parameters.scan-type >>" >> $BASH_ENV
+        echo "export INPUT_IMAGE_REF=<< parameters.image-ref >>" >> $BASH_ENV
+        echo "export INPUT_SCAN_REF=<< parameters.scan-ref >>" >> $BASH_ENV
+        echo "export INPUT_TRIVYIGNORES=<< parameters.trivy-ignores >>" >> $BASH_ENV
+        echo "export INPUT_GITHUB_PAT=<< parameters.github-pat >>" >> $BASH_ENV
+        echo "export INPUT_TRIVYIGNORES=<< parameters.trivy-ignores >>" >> $BASH_ENV
+        echo "export INPUT_LIMIT_SEVERITIES_FOR_SARIF=<< parameters.limit-severities-for-sarif >>" >> $BASH_ENV
+        echo "export TRIVY_CACHE_DIR=<< parameters.cache-dir >>" >> $BASH_ENV
+
+        source $BASH_ENV
+
+  - run:
+      name: Run Trivy
+      command: <<include(scripts/entrypoint.sh)>>
+
+  # Restore DB from cache using checksum of date file
+  - when:
+      condition:
+        equal: [ true, << parameters.cache >> ]
+      steps:
+        - save_cache:
+            name: Save Trivy DB from Cache
+            key: cache-trivy-{{ checksum "current_date.txt" }}
+            paths:
+              - << parameters.cache-dir >>
