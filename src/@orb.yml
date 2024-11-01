@@ -1,8 +1,7 @@
 version: 2.1
 
 description: >
-  Aqua Security Trivy - Ported from GitHub Action
-  NOT OFFICIAL
+  Aqua Security Trivy - Ported from GitHub Action - Unofficial
 display:
   home_url: "https://github.com/aquasecurity/trivy-action"
   source_url: "https://github.com/CircleCI-Labs/trivy"
